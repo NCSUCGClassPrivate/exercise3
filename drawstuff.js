@@ -294,26 +294,39 @@ function drawPixel(imagedata,x,y,color) {
 function interpRect(imagedata,top,bottom,left,right,globals,tlAttribs,trAttribs,brAttribs,blAttribs) {
     
     // shade the pixel given pixel position and interp'd attribs
-    // assumes attribs contains a "diffuse" property which is a Color object
+    // assumes attribs contains ambient, diffuse, specular Colors and shininess
     // assumes all other properties are floats
     // modifies pass image data
     function shadePixel(imagedata,pixX,pixY,globals,attribs) {
-        var difColor = new Color();
+        var outColor = new Color();
         var worldLoc = new Vector(pixX,pixY,0); // assume rect at z=0
-        var lVect = new Vector();
+        var N = new Vector(0,0,1); // rect in xy plane
         
-        // get light vector
-        lVect.copy(globals.lightPos);
-        lVect = Vector.subtract(lVect,worldLoc);
-        lVect = Vector.normalize(lVect);
-        var NdotL = Vector.dot(lVect,new Vector(0,0,1)); // rect in xy plane
+        // light and view vectors (from surface toward light / eye)
+        var L = Vector.normalize(Vector.subtract(globals.lightPos, worldLoc));
+        var V = Vector.normalize(Vector.subtract(globals.eyePos, worldLoc));
+        var NdotL = Math.max(0, Vector.dot(N, L));
         
-        // calc diffuse color
-        difColor.r = attribs.diffuse.r * globals.lightCol.r/255 * NdotL;
-        difColor.g = attribs.diffuse.g * globals.lightCol.g/255 * NdotL;
-        difColor.b = attribs.diffuse.b * globals.lightCol.b/255 * NdotL;
+        // Phong reflection: R = 2(N·L)N - L
+        var R = Vector.normalize(Vector.subtract(Vector.scale(2 * Vector.dot(N, L), N), L));
+        var RdotV = Math.max(0, Vector.dot(R, V));
+        var specFactor = Math.pow(RdotV, attribs.shininess);
         
-        drawPixel(imagedata,pixX,pixY,difColor);
+        // I = Ka Ia + Kd Id (N·L) + Ks Is (R·V)^n
+        outColor.r = attribs.ambient.r * globals.ambientCol.r/255
+                   + attribs.diffuse.r * globals.lightCol.r/255 * NdotL
+                   + attribs.specular.r * globals.lightCol.r/255 * specFactor;
+        outColor.g = attribs.ambient.g * globals.ambientCol.g/255
+                   + attribs.diffuse.g * globals.lightCol.g/255 * NdotL
+                   + attribs.specular.g * globals.lightCol.g/255 * specFactor;
+        outColor.b = attribs.ambient.b * globals.ambientCol.b/255
+                   + attribs.diffuse.b * globals.lightCol.b/255 * NdotL
+                   + attribs.specular.b * globals.lightCol.b/255 * specFactor;
+        outColor.r = Math.min(255, outColor.r);
+        outColor.g = Math.min(255, outColor.g);
+        outColor.b = Math.min(255, outColor.b);
+        
+        drawPixel(imagedata,pixX,pixY,outColor);
     } // end shade pixel
     
     try {
@@ -391,12 +404,26 @@ function main() {
     var imagedata = context.createImageData(w,h);
  
     // Define a rectangle in 2D with colors and coords at corners
-    var globals = { lightPos: new Vector(100,100,50),  // light over left upper rect
-                    lightCol: new Color(255,255,255)}; // light is white
-    var tlAttribs = { diffuse: new Color(0,0,255)};    // all four rect verts blue
-    var trAttribs = { diffuse: new Color(0,0,255)};
-    var brAttribs = { diffuse: new Color(0,0,255)};
-    var blAttribs = { diffuse: new Color(0,0,255)};
+    var globals = { lightPos: new Vector(160,90,12),     // closer, across the rectangle
+                    lightCol: new Color(255,255,255),    // light is white
+                    ambientCol: new Color(50,50,50),     // dim ambient
+                    eyePos: new Vector(125,100,200) };   // viewer above the rect
+    var tlAttribs = { ambient: new Color(0,0,255),       // blue material
+                      diffuse: new Color(0,0,255),
+                      specular: new Color(255,255,255),  // white highlight
+                      shininess: 32 };
+    var trAttribs = { ambient: new Color(0,0,255),
+                      diffuse: new Color(0,0,255),
+                      specular: new Color(255,255,255),
+                      shininess: 32 };
+    var brAttribs = { ambient: new Color(0,0,255),
+                      diffuse: new Color(0,0,255),
+                      specular: new Color(255,255,255),
+                      shininess: 32 };
+    var blAttribs = { ambient: new Color(0,0,255),
+                      diffuse: new Color(0,0,255),
+                      specular: new Color(255,255,255),
+                      shininess: 32 };
     interpRect(imagedata,50,150,50,200,globals,tlAttribs,trAttribs,brAttribs,blAttribs);
     context.putImageData(imagedata,0,0); // display the image in the context
 } // end main
